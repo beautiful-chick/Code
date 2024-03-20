@@ -27,18 +27,25 @@
 
 #define  MSG_STR "Hello,I am ready to connect with you!"
 #define  TEMP "temperature"
+#define  HEARTBEAT_INTERVAL 5 
+
 
 void print_usage(char *progname);
 int  get_temperature(float *temp);
 int  get_devid(char *id,int len);
 void get_time(char *time_buf);
+void send_heartbeat(int sockfd);
+int  connect_to_server();
+
+int      port=0;
+char    *servip;
 int main (int argc, char **argv)
 {
 	int                  conn_fd=-1;
 	int                  rv=-1;
 	struct sockaddr_in   serv_addr;
-	int                  port;
-	char                *servip=NULL;
+//	int                  port;
+//	char                *servip=NULL;
 	char                 buf[1024];
 	int                  ch=-1;
 	int                  temp_time=10;
@@ -46,6 +53,12 @@ int main (int argc, char **argv)
 	char                 id[16];
 	int                  len=16;
 	char                 time_buf[128];
+	char                 all_buf[256];
+//	time_t               last_heartbeat_time;
+//	time_t               current_time;
+//	ssize_t              num_bytes;
+    int                  error = 0;
+	socklen_t            err_len = 0;
 
 	struct option       opts[]={
 		{"ipaddr",required_argument,NULL,'i'},
@@ -79,8 +92,7 @@ int main (int argc, char **argv)
 		print_usage(argv[0]);
 		return 0;
 	}
-	while(1)
-	{
+
 	conn_fd = socket(AF_INET,SOCK_STREAM,0);
 	if(conn_fd<0)
 	{
@@ -89,6 +101,7 @@ int main (int argc, char **argv)
 	}
 	printf("Create client[%d] successfully!\n",conn_fd);
 
+	
 	memset(&serv_addr,0,sizeof(serv_addr));
 	serv_addr.sin_family = AF_INET;
 	serv_addr.sin_port = htons(port);
@@ -102,6 +115,11 @@ int main (int argc, char **argv)
 	
 	printf ("Connect to server [%s:%d] successfully\n",servip,port);
 
+	/* init the last time of sending heartbeat */
+//	last_heartbeat_time = time(NULL);
+
+	while(1)
+	{
 /*  memset(buf,0,sizeof(buf));
 	rv =read(conn_fd,buf,sizeof(buf));
 	if(rv<0)
@@ -120,7 +138,44 @@ int main (int argc, char **argv)
 
 	printf ("Read %d bytes data from server:%s\n",rv,buf);
 */
+		/* Receive data */
+/* 	num_bytes = recv(conn_fd,buf,sizeof(buf),0);
+	if(num_bytes <= 0)
+	{
+		if(errno==ECONNRESET || errno == ECONNABORTED || errno == EPIPE)
+		{
 
+			printf ("Connection closed by server. \nReconnecting...\n");
+			if((conn_fd=connect_to_server())==-1)
+			{
+
+				printf ("Failed to reconnect.Exiting...\n");
+				break;
+			}
+			last_heartbeat_time = time(NULL);
+		}
+		else
+		{
+
+			printf ("Recv failure:%s\n",strerror(errno));
+			printf ("Error receiving data.Exiting...\n");
+			break;
+		}
+
+	}
+	else{
+
+		printf ("Recived:%s\n",buf);
+	}
+	memset(buf,0,sizeof(buf));
+	if(current_time - last_heartbeat_time >= HEARTBEAT_INTERVAL)
+	{
+		send_heartbeat(conn_fd);
+		last_heartbeat_time= current_time;
+	}
+
+	sleep(1);
+*/
 	/* Acquire devece id */
 	if((rv=get_devid(id,len))<0)
 	{
@@ -139,27 +194,42 @@ int main (int argc, char **argv)
 		goto cleanUp;
 	}
 	
-	printf ("debug00:temp:%.2f\n",temp);
+//	printf ("debug00:temp:%.2f\n",temp);
 
 	memset(buf,0,sizeof(buf));
 	snprintf(buf,sizeof(buf),"%s:%.2f",TEMP,temp);
 
-	if(write(conn_fd,buf,strlen(buf))<0)
+	snprintf(all_buf,sizeof(all_buf),"%s--%s--%s",id,time_buf,buf);
+	/* After package judge connected or not */
+	if(getsockopt(conn_fd,SOL_SOCKET,SO_ERROR,&error,&err_len) != 0)
+	{
+	
+		printf ("getsockopt failure:%s\n",strerror(errno));
+		break;
+	}
+	if(error != 0)
+	{
+
+		printf ("Connection lost.\n");
+		break;
+	}
+	if(write(conn_fd,all_buf,strlen(all_buf))<0)
 	{
 
 		printf ("Write to server failure:%s\n",strerror(errno));
 		goto cleanUp;
 	}
 
-	printf ("Update %s successfully!\n",buf);
+	printf ("Update %s successfully!\n",all_buf);
 
 	
 
 	sleep(temp_time);
+	}
 cleanUp:
 	close(conn_fd);
 
-	}
+	
 
 	return 0;
 
@@ -248,7 +318,7 @@ int get_temperature(float *temp)
 	ptr += 2;
 	*temp=atof(ptr)/1000;
 	
-	printf ("temperature:\n");
+//	printf ("temperature:\n");
 	close(fd);
 cleanup:
 	if(fd)
@@ -284,10 +354,55 @@ void  get_time(char *time_buf)
 	memset(time_buf,0,sizeof(time_buf));
 
 //	printf ("%d\n",sizeof(time_buf));
-	snprintf(time_buf,128,"%d/%d/%d --%d:%d:%d",1900+p->tm_year,1+p->tm_mon,p->tm_mday,8+p->tm_hour,p->tm_min,p->tm_sec);
+	snprintf(time_buf,128,"%d/%d/%d --%d:%d:%d",1900+p->tm_year,1+p->tm_mon,p->tm_mday,p->tm_hour,p->tm_min,p->tm_sec);
 
 	printf("%s\n",time_buf);
 	return ;
 //	strncpy(time_buf,asctime(gmtime(&timep)),sizeof(time_buf));
 
+}
+
+void send_heartbeat(int sockfd)
+{
+	const char                *heartbeat_msg="heartbeat";
+	if(send(sockfd,heartbeat_msg,strlen(heartbeat_msg),0)==-1)
+	{
+		printf ("Send failure:%s\n",strerror(errno));
+		
+	}
+	else
+		printf ("Heartbeat sent successfullt!\n");
+}
+
+int connect_to_server()
+{
+	struct sockaddr_in      server_addr;
+	int                     sockfd;
+
+	if((sockfd=socket(AF_INET,SOCK_STREAM,0))==-1)
+	{
+		
+		printf ("Create socket failure:%s\n",strerror(errno));
+		return -1;
+	}
+
+	memset(&server_addr,0,sizeof(server_addr));
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_port = htons(port);
+	if(inet_pton(AF_INET,servip,&server_addr)==-1)
+	{
+
+		printf ("inet_pton:%s\n",strerror(errno));
+		return -1;
+	}
+	if(connect(sockfd,(struct sockaddr *)&server_addr,sizeof(server_addr))==-1)
+	{
+
+		printf ("Connect failure:%s\n",strerror(errno));
+		close(sockfd);
+		return -1;
+	}
+
+	printf ("connectd to server successfully!\n");
+	return sockfd;
 }
