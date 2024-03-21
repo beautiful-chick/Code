@@ -20,11 +20,21 @@
 #include <errno.h>
 #include <dirent.h>
 #include<time.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+#include<arpa/inet.h>
 #define		TIMEOUT 5
 
 #define	SERVER_IP			"127.0.0.1"
 #define SERVER_PORT			8889
 
+struct DS18B20_DATA
+{
+	char            *dev_time;
+	float           dev_temp;
+	char            dev_buf[1024];
+}data;
 
 int main(int argc,char **argv)
 {
@@ -47,15 +57,15 @@ int main(int argc,char **argv)
 	time_t						timer;
 	struct tm					*Now;
 	char						*now_time;
-	//struct	DS18B20_DATA		*p;
-	struct DS18B20_DATA{
+	struct	DS18B20_DATA		*p;
+/*	struct DS18B20_DATA{
 		char		*dev_time;
 		float		dev_temp;
 		char		dev_buf[1024];
 
 		
-	}data;
-   //	p = (struct data *)malloc(sizeof(struct data)); 
+	}data;*/
+   	p = &data; 
 
 	/*打开文件夹*/
 	dirp = opendir(w1_path);
@@ -97,8 +107,7 @@ int main(int argc,char **argv)
 	strncat(w2_path,"/name",sizeof(w2_path)-strlen(w2_path));
 
 
-	while(1)
-	{
+	while(1)	{
 	/*打开文件*/
 
 	fd = open(w1_path,O_RDONLY);
@@ -175,16 +184,21 @@ int main(int argc,char **argv)
 
 	sleep(TIMEOUT);
 	}
+	printf("%s %s %.2f\n",data.dev_time,data.dev_buf,data.dev_temp);
 	close(fd);
 
-/*
+
 	
 	int							conn_fd = -1;
 	int							rv = -1;
 	char						sock_buf[1024];
 	struct sockaddr_in			serv_addr;
+	char						snd_buf[1024] = {0};
+	
+	memcpy(snd_buf, &data, sizeof(data));
 
-	conn_fd = Socket(AF_INET,SOCK_STREAM,0);
+
+	conn_fd = socket(AF_INET,SOCK_STREAM,0);
 	if( conn_fd < 0 )
 	{
 		printf("create socket failure : %s\n",strerror(errno));
@@ -201,7 +215,29 @@ int main(int argc,char **argv)
 		
 
 	}
-*/
+	
+	if( write(conn_fd,snd_buf,strlen(snd_buf)) < 0 )
+	{
+		printf("Write data to server[%s:%d] failure : %s\n",strerror(errno));
+		goto cleanup;
+	}
+
+	memset(sock_buf,0,sizeof(sock_buf));
+	rv = read(conn_fd,sock_buf,sizeof(sock_buf));
+	if( rv < 0 )
+	{
+		printf("Read data from server failure: %s\n",strerror(errno));
+		goto cleanup;
+	}
+	else if( rv == 0 )
+	{
+		printf("Client connect to server get disconnect\n");
+	}
+	printf("Read %d bytes data from server:'%s'\n",rv,sock_buf);
+
+cleanup:
+	close(conn_fd);
+
 
 
 	
