@@ -18,7 +18,10 @@
 #include <sys/select.h>
 #include "log.h"
 #include <signal.h>
-#include <sqlite3.h>
+#include "sqlite3.h"
+#include "sqlit.h"
+#include "socket_init.h"
+#include "get_time_temper.h"
 #define SERVER_IP "127.0.0.1"
 #define SERVER_PORT 8889
 #define MSG_STR "Hello, Unix Network Program World!"
@@ -26,153 +29,14 @@
 
 
 #define BUFFER_SIZE 1024    
-void ds18b20_get_temperature(float *temp);  
-int sqlite3_temper(char* buf_temper);
-int sqlite3_extract();
 
-typedef struct socket_s
-{
-	int                     conn_fd ;
-	char					*server_ip;
-	int						port;
-	int                     rv ; 
-}socket_t;
 close_sock(socket_t *sock)
 {
 	close(sock->conn_fd);
 
 }
-void	sqlite3_write(char* buf_temper, socket_t *sock)
-{
-	printf("Write data to server [%s:%d] failure: %s\n", sock->server_ip, sock->port, strerror(errno));
-	int rvq= sqlite3_temper(buf_temper);            //写进数据库
-	if(rvq == 0)
-	{
-		printf("写入数据库成功");
-	}
-	else
-	{
-		printf("写入数据库失败");
-	}
-}
-void	sqlite3_open_delect(socket_t *sock)
-{
-	int rc; 
-	sqlite3 *db;  
-	char *err_msg = 0; 
-	char buf[200];
-	rc = sqlite3_open("data_temper.db", &db);  
-
-	if (rc) {  
-		fprintf(stderr, "无法打开数据库1: %s\n", sqlite3_errmsg(db));  
-		return 0;  
-	} 
-	else {  
-		fprintf(stdout, "成功打开数据库1\n");  
-	}
-	const char *sql = "select * from company";
-	sqlite3_stmt *stmt;
-	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
 
 
-	if(rc != SQLITE_OK)
-	{
-		fprintf(stderr, "SQL错误22:%s\n", sqlite3_errmsg(db));
-
-	}
-	else 
-	{
-		fprintf(stdout, "查询准备成功\n");
-	}
-
-	while( (sqlite3_step(stmt) == SQLITE_ROW))
-	{
-		int column_count = sqlite3_column_count(stmt);
-		for(int i = 0; i < column_count; i++ )
-		{
-			const char *column_name = sqlite3_column_name(stmt, i);
-			memset(buf, 0, sizeof(buf));
-			sprintf(buf, column_name, sizeof(column_name));
-			write(sock->conn_fd, buf, sizeof(buf)) ;
-
-		}
-
-		const char *sql2 = "DELETE  from company";  
-
-		// 执行SQL语句  
-		rc = sqlite3_exec(db, sql2, 0, 0, &err_msg);  
-
-		if (rc != SQLITE_OK ) {  
-			fprintf(stderr, "SQL错误: %s\n", err_msg);  
-			sqlite3_free(err_msg);  
-		} else {  
-			fprintf(stdout, "成功删除记录\n");  
-		} 
-
-
-
-
-
-	}
-	// 准备SQL DELETE语句  
-
-
-
-
-}
-
-char get_time_temper(char* buf_temper, float temp)
-{
-	time_t					time_now;	
-	char*					buf_time;	
-	ds18b20_get_temperature(&temp);	 
-	memset(buf_temper, 0, sizeof(buf_temper));
-
-	time(&time_now);
-	buf_time = ctime(&time_now);
-	sprintf(buf_temper,"temperature:%f,time:%s",temp,buf_time);
-}
-
-int socket_temperature_init(socket_t *sock )
-{
-
-	struct 					sockaddr_in      server_addr; 
-	int sock_rv=-1; 
-	sock->conn_fd = socket(AF_INET, SOCK_STREAM, 0);  
-	if (sock->conn_fd < 0)
-	{  
-		perror("socket creation failed");  
-		sleep(1);  
-		return -1;  
-	}
-	memset(&server_addr, 0, sizeof(server_addr));  
-	server_addr.sin_family = AF_INET;  
-	server_addr.sin_port = htons(sock->port); 
-
-	if (inet_pton(AF_INET, sock->server_ip, &server_addr.sin_addr) <= 0) 
-	{  
-		perror("invalid server address");  
-		close_sock(&sock) ;  
-		return -2;
-	}  
-
-
-
-	// 配置服务器地址信息  
-
-
-	// 尝试连接到服务器  
-	sock_rv = connect(sock->conn_fd, (struct sockaddr*)&server_addr, sizeof(server_addr));
-	if ( sock_rv < 0) {  
-		perror("connect failed\n");  
-		close_sock(&sock) ;
-		sleep(1);  
-		return sock_rv; 
-	}  
-
-	printf("Connected to the server.\n"); 
-	return sock_rv;
-}
 void print_usage( char *progname)
 {
 	printf("%s usage:  n",progname);

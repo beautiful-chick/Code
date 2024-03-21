@@ -11,7 +11,8 @@
  *                 
  ********************************************************************************/
 #include <stdio.h>  
-#include <sqlite3.h>  
+#include <sqlite3.h> 
+#include "socket_client_option.h"
 int sqlite3_temper(char *buffer_temper) 
 {
 	sqlite3 *db;  
@@ -140,4 +141,82 @@ int sqlite3_extract()
 	sqlite3_close(db);
 
 	return 1;
+}
+
+
+
+
+void	sqlite3_open_delect(socket_t *sock)
+{
+	int rc;
+	sqlite3 *db;
+	char *err_msg = 0;
+	char buf[200];
+	rc = sqlite3_open("data_temper.db", &db);
+
+	if (rc) {
+		fprintf(stderr, "无法打开数据库1: %s\n", sqlite3_errmsg(db));
+		return 0;
+	}
+	else {
+		fprintf(stdout, "成功打开数据库1\n");
+	}
+	const char *sql = "select * from company";
+	sqlite3_stmt *stmt;
+	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+
+
+	if(rc != SQLITE_OK)
+	{
+		fprintf(stderr, "SQL错误22:%s\n", sqlite3_errmsg(db));
+
+	}
+	else
+	{
+		fprintf(stdout, "查询准备成功\n");
+	}
+
+	while( (sqlite3_step(stmt) == SQLITE_ROW))
+	{
+		int column_count = sqlite3_column_count(stmt);
+		for(int i = 0; i < column_count; i++ )
+		{
+			const char *column_name = sqlite3_column_name(stmt, i);
+			memset(buf, 0, sizeof(buf));
+			sprintf(buf, column_name, sizeof(column_name));
+			write(sock->conn_fd, buf, sizeof(buf)) ;
+
+		}
+
+		const char *sql2 = "DELETE  from company";
+
+		// 执行SQL语句
+		rc = sqlite3_exec(db, sql2, 0, 0, &err_msg);
+
+		if (rc != SQLITE_OK ) {
+			fprintf(stderr, "SQL错误: %s\n", err_msg);
+			sqlite3_free(err_msg);
+		} else {
+			fprintf(stdout, "成功删除记录\n");
+		}
+
+
+
+
+	}
+
+}
+
+void	sqlite3_write(char* buf_temper, socket_t *sock)
+{
+	printf("Write data to server [%s:%d] failure: %s\n", sock->server_ip, sock->port, strerror(errno));
+	int rvq= sqlite3_temper(buf_temper);            //写进数据库
+	if(rvq == 0)
+	{
+		printf("写入数据库成功");
+	}
+	else
+	{
+		printf("写入数据库失败");
+	}
 }

@@ -1,0 +1,1 @@
+ifndef SQLITE_H#define SQLITE_H	void	sqlite3_open_delect(socket_t *sock);	int rc; 	sqlite3 *db;  	char *err_msg = 0; 	char buf[200];#endif
