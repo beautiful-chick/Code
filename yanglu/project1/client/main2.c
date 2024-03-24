@@ -35,7 +35,7 @@ int sock_reconnect(char *servip,int port);
 int main(int argc,char ** argv)
 {
 	int 						connfd=-1;
-	int 						k,l;
+	int 						k;
 	int							rv=-1;
 	float						temp;
 	int							time;
@@ -111,19 +111,15 @@ int main(int argc,char ** argv)
 		k=socket_alive(connfd);
 		if(k<0)//服务端断开
 		{
-			close(connfd);
 			//写进数据库
 
 			//重新连接
-			l=sock_reconnect(servip,port);
-			if(l<0)	
-	 			continue;
-			else
-			{   //检查数据库中是否有数据
-				//从数据库中取出数据
-				//写入服务端
-				//若数据库中数据与服务端接收到的数据相同，则删除数据库中数据
-				continue;
+			sock_reconnect(servip,port);
+			//从数据库取出数据，发送到服务端
+			if(write(connfd,buf,strlen(buf)));
+			{
+				printf("Write data to server failure:%s",strerror(errno));
+				goto CleanUp;
 			}
 		}
 		else//服务端未断开
@@ -133,25 +129,24 @@ int main(int argc,char ** argv)
 				printf("Write data to server failure:%s\n",strerror(errno));
 				goto CleanUp;
 			}	
-		
-
- 			memset(buf,0,sizeof(buf));
-			rv=read(connfd,buf,sizeof(buf));
-			if(rv<0)
-			{
-				printf("Read data from server failure:%s\n",strerror(errno));
-				goto CleanUp;
-			}	
-
-			else if(rv==0)
-			{
-				printf("Client connect to server get disconnected\n");
-				goto CleanUp;
-			}
-
-			printf("%s\n",buf);
-			sleep(time);
 		}
+
+ 		memset(buf,0,sizeof(buf));
+		rv=read(connfd,buf,sizeof(buf));
+		if(rv<0)
+		{
+			printf("Read data from server failure:%s\n",strerror(errno));
+			goto CleanUp;
+		}
+
+		else if(rv==0)
+		{
+			printf("Client connect to server get disconnected\n");
+			goto CleanUp;
+		}
+
+		printf("%s\n",buf);
+		sleep(time);
 	}
 
 CleanUp:
@@ -279,14 +274,15 @@ int sock_reconnect(char *servip,int port)
 {
 	struct sockaddr_in 		servaddr;
 	int						connfd;
-
+	while(1)
+	{
 		printf("Trying to reconnect server...\n");
 
 		connfd=socket(AF_INET,SOCK_STREAM,0);
 		if(connfd<0)
 		{	
 			printf("Create socket failure:%s\n",strerror(errno));
-		
+			continue;
 		}
 
 		memset(&servaddr,0,sizeof(servaddr));
@@ -298,13 +294,17 @@ int sock_reconnect(char *servip,int port)
 			printf("Reconnect to server failure:%s\n",strerror(errno));		
 			close(connfd);
 			sleep(3);
-			return -1;
+			continue;
 		}
 		else
 		{
 			printf("Reconnect server successfully\n");
-			return connfd;
+			break;
 		}
-	
+	}
 }
 
+sqlite3* sqlite_open_database(char* db_name)
+{
+	int rc=0;
+}
