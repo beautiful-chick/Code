@@ -56,11 +56,11 @@ struct DS18B20_DATA
 }data;
 static char                       snd_buf[1024] = {0};
 int dev_sqlite3(struct DS18B20_DATA data);
-char *read_data();
-int			internet_write(struct DS18B20_DATA data);
+char  *read_data();
+int			internet_write(struct DS18B20_DATA data,char *snd_buf);
 int main(int argc,char **argv)
 {
-	char				*snd_buf;
+//	char				*snd_buf;
 	int			opt;
 	char		*progname = NULL;
 	float 		dev_temp;
@@ -135,7 +135,7 @@ int main(int argc,char **argv)
 			snprintf(data.d_time,32,dev_time);
 			data.d_temp = dev_temp;
 //			printf("In the internet snd_buf: %s\n",snd_buf);
-			internet_write(data);
+			internet_write(data,snd_buf);
 			
 		
 		/*  	dev_temp = get_temperature();
@@ -284,11 +284,6 @@ char *get_time(){
 }
 
 int internet_connect(struct DS18B20_DATA data){
-//	int							conn_fd = -1;
-//	int							rv = -1;
-//	char						sock_buf[1024];
-//	struct sockaddr_in			serv_addr;
-	//char						snd_buf[2048] = {0};
 	conn_fd = socket(AF_INET,SOCK_STREAM,0);	
 	if( conn_fd < 0 )
 	{
@@ -309,14 +304,16 @@ int internet_connect(struct DS18B20_DATA data){
 	
 		return 0;
 }
-int internet_write(struct DS18B20_DATA data)
+
+
+int internet_write(struct DS18B20_DATA data,char *snd_buf)
 {
-		snprintf(snd_buf,2048,"%s,%s,%.2f",data.d_time,data.d_name,data.d_temp);
-		printf("internet_write snd_buf:%s\n",snd_buf);
-		if( write(conn_fd,snd_buf,strlen(snd_buf)) < 0 )
-		{
-			printf("Wirte data to server[%s:%d] failure : %s\n",cli_ip,cli_port,strerror(errno));	
-		}
+	snprintf(snd_buf,2048,"%s,%s,%.2f",data.d_time,data.d_name,data.d_temp);
+	printf("internet_write snd_buf:%s\n",snd_buf);
+	if( write(conn_fd,snd_buf,strlen(snd_buf)) < 0 )
+	{
+		printf("Wirte data to server[%s:%d] failure : %s\n",cli_ip,cli_port,strerror(errno));	
+	}
 	return 0;
 }
 
@@ -339,7 +336,7 @@ int internet_read(){
 }
 
 
- int re_connect()
+ int re_connect(char *snd_buf)
 {
 	printf("Start to re_connect\n");
 	struct tcp_info				optval;
@@ -364,15 +361,15 @@ int internet_read(){
 		/*重连成功：将数据库中的数据上传，并删除数据库中的数据*/
 		else
 		{
+			printf("else\n");
 			sqlite3_open("dev_database.db", &db);		
 			row = get_row();
-			while(row > 0)
+			while(row > 1)
 			{
 				row = get_row();
-				read_data();
-				printf("Read data from database ok\n");
-				printf("data:%s\n", snd_buf);
-				internet_write(data);
+				printf("Now row:%d\n",row);
+				snd_buf = read_data();
+				write(conn_fd,snd_buf,strlen(snd_buf));
 				/*删除数据*/
 				printf("Start to delete data\n");
 				sqlite3_open("dev_database.db", &db);
@@ -400,7 +397,7 @@ int del_database(){
 char  *read_data()
 
 {
-	char				*sql_buf;
+	char				*snd_buf;
 	int					rc;
 	static int			row_count; 
 	sqlite3				*db;
@@ -413,6 +410,7 @@ char  *read_data()
 		sqlite3_close(db);
 		return NULL;
 	}
+	printf("Open the database ok\n");
 
 	const char *sql = "SELECT * FROM dev_mesg LIMIT 1;";
 	rc = sqlite3_prepare_v2(db,sql,-1,&stmt,0);
@@ -430,8 +428,11 @@ char  *read_data()
 			const char *de_name = (const char *)sqlite3_column_text(stmt,0);
 			const char *de_time = (const char *)sqlite3_column_text(stmt,1);
 			double de_temp = sqlite3_column_double(stmt,2);
-		//	printf("de_name: %s, de_time: %s, de_temp: %.2f\n", de_name, de_time, de_temp);
-		snprintf(snd_buf,2048,"%s,%s,%.2f",de_time,de_name,de_temp);
+			printf("de_name: %s, de_time: %s, de_temp: %.2f\n", de_name, de_time, de_temp);
+			memset(snd_buf,0,strlen(snd_buf));
+			snprintf(snd_buf,2048,"%s,%s,%.2f",de_time,de_name,de_temp);
+			printf("%s",snd_buf);
+		
 		}
 	sqlite3_finalize(stmt);
 	 return snd_buf;
